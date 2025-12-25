@@ -54,7 +54,7 @@ bool BuildMessage_Hook(
     ).count();
 
     if (msg) {
-        DebugPrintLockA("SEND Time: %lld\d, msgId: %d\n", now_ms, msg->fields.msgId);
+        DebugPrintLockA("SEND Time: %lld, msgId: %d\n", now_ms, msg->fields.msgId);
         WriteFile(".\\SEND.txt", "SEND Time: %lld, msgId: %d\n", now_ms, msg->fields.msgId);
 
         if (msg->fields.msgBody)

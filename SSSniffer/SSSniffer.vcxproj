@@ -24,7 +24,7 @@
     <ProjectGuid>{879302dd-f0e8-4b96-9b8d-132f642fc801}</ProjectGuid>
     <RootNamespace>version</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>StellaSoraSniffer</ProjectName>
+    <ProjectName>SSSniffer</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
