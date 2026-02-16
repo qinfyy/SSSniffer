@@ -3,81 +3,112 @@
 #include "PrintHelper.h"
 #include "FileWriter.h"
 #include <chrono>
+#include "BinaryDeserializer.h"
+#include "FrontendServer.h"
+#include "Util.h"
 
-HttpNetMsg* readMessage_Hook(
-    void* thisPtr,
-    Byte__Array* messageBuffer,
-    int32_t offset,
-    int32_t length,
-    void* method) {
+HttpNetMsg* readMessage_Hook(void* thisPtr, Byte__Array* messageBuffer, int32_t offset, int32_t length, void* method) {
+    HttpNetMsg* ret = ((HttpNetMsg * (*)(void*, void*, int32_t, int32_t, void*))o_readMessage)(thisPtr, messageBuffer, offset, length, method);
 
-    HttpNetMsg* ret = ((HttpNetMsg* (*)(void*, void*, int32_t, int32_t, void*))o_readMessage)(
-        thisPtr, messageBuffer, offset, length, method
-        );
+    if (!ret)
+        return ret;
 
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()
-    ).count();
+    Packet pkt{};
+    pkt.time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    pkt.fromServer = true;
+    pkt.packetId = ret->fields.msgId;
+    pkt.packetName = GetMsgName(ret->fields.msgId);
 
-    if (ret) {
-        DebugPrintLockA("RECV Time: %lld, msgId: %d\n", now_ms, ret->fields.msgId);
-        WriteFile(".\\RECV.txt", "RECV Time: %lld, msgId: %d\n", now_ms, ret->fields.msgId);
+    if (ret->fields.msgBody && ret->fields.msgBody->vector) {
+        auto len = ret->fields.msgBody->max_length;
+        const uint8_t* data = ret->fields.msgBody->vector;
 
-        if (ret->fields.msgBody) {
-            DebugPrintLockA("      msgBody len: %d\n", ret->fields.msgBody->max_length);
-            DebugPrintLockA("      msgBody(hex): %s\n", ByteArrayToHex(ret->fields.msgBody->vector, ret->fields.msgBody->max_length).c_str());
-            DebugPrintLockA("      receiveMsgId: %d\n", ret->fields.receiveMsgId);
+        if (len > 15) {
+            const uint8_t* p = data + len;
+            uint8_t acc = 0;
+            for (int i = 0; i < 16; ++i) {
+                acc |= *(--p);
+            }
+            len -= (acc == 0) * 16;
+        }
 
-            WriteFile(".\\RECV.txt", "      msgBody len: %d\n", ret->fields.msgBody->max_length);
-            WriteFile(".\\RECV.txt", "      msgBody(hex): %s\n", ByteArrayToHex(ret->fields.msgBody->vector, ret->fields.msgBody->max_length).c_str());
-            WriteFile(".\\RECV.txt", "      receiveMsgId: %d\n", ret->fields.receiveMsgId);
+        pkt.raw.assign(data, data + len);
+
+        std::string jsonStr;
+        try {
+            if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr)) {
+                pkt.object = nlohmann::json::parse(jsonStr);
+            }
+            else {
+                pkt.object = nullptr;
+            }
+        }
+        catch (const std::exception& e) {
+            DebugPrintA("[rm] Exception: %s\n", e.what());
+            pkt.object = nullptr;
         }
     }
-    else {
-        DebugPrintLockA("RECV msg is NULL\n");
-        WriteFile(".\\RECV.txt", "RECV msg is NULL\n");
-    }
 
-    WriteFile(".\\RECV.txt", "\n");
+    nlohmann::json j = {
+        {"time", pkt.time},
+        {"fromServer", pkt.fromServer},
+        {"packetId", pkt.packetId},
+        {"packetName", pkt.packetName},
+        {"object", pkt.object},
+        {"raw", Base64Encode(pkt.raw)}
+    };
+
+    std::string output = j.dump(4);
+
+    WriteToFile("%s\n", output.c_str());
+    PushEvent(output);
 
     return ret;
 }
 
-bool BuildMessage_Hook(
-    void* thisPtr,
-    HttpNetMsg* msg,
-    void* data,
-    void* method) {
+bool BuildMessage_Hook(void* thisPtr, HttpNetMsg* msg, void* data, void* method){
+    if (!msg)
+        return ((bool (*)(void*, HttpNetMsg*, void*, void*))o_BuildMessage)(thisPtr, msg, data, method);
 
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()
-    ).count();
+    Packet pkt{};
+    pkt.time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    pkt.fromServer = false;
+    pkt.packetId = msg->fields.msgId;
+    pkt.packetName = GetMsgName(msg->fields.msgId);
 
-    if (msg) {
-        DebugPrintLockA("SEND Time: %lld, msgId: %d\n", now_ms, msg->fields.msgId);
-        WriteFile(".\\SEND.txt", "SEND Time: %lld, msgId: %d\n", now_ms, msg->fields.msgId);
+    if (msg->fields.msgBody && msg->fields.msgBody->vector) {
+        auto len = msg->fields.msgBody->max_length;
 
-        if (msg->fields.msgBody)
-        {
-            DebugPrintLockA("      msgBody len: %d\n", msg->fields.msgBody->max_length);
-            DebugPrintLockA("      msgBody(hex): %s\n", ByteArrayToHex(msg->fields.msgBody->vector, msg->fields.msgBody->max_length).c_str());
+        pkt.raw.assign(msg->fields.msgBody->vector, msg->fields.msgBody->vector + len);
 
-            WriteFile(".\\SEND.txt", "      msgBody len: %d\n", msg->fields.msgBody->max_length);
-            WriteFile(".\\SEND.txt", "      msgBody(hex): %s\n", ByteArrayToHex(msg->fields.msgBody->vector, msg->fields.msgBody->max_length).c_str());
+        std::string jsonStr;
+        try {
+            if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr))
+            {
+                    pkt.object = nlohmann::json::parse(jsonStr);
+            }
+            else {
+                pkt.object = nullptr;
+            }
+        } catch (const std::exception& e) {
+            DebugPrintA("[bm] Exception: %s\n", e.what());
+            pkt.object = nullptr;
         }
-
-        DebugPrintLockA("      receiveMsgId: %d\n", msg->fields.receiveMsgId);
-        WriteFile(".\\SEND.txt", "      receiveMsgId: %d\n", msg->fields.receiveMsgId);
-    }
-    else
-    {
-        DebugPrintLockA("SEND msg is NULL\n");
-        WriteFile(".\\SEND.txt", "SEND msg is NULL\n");
     }
 
-    WriteFile(".\\SEND.txt", "\n");
+    nlohmann::json j = {
+        {"time", pkt.time},
+        {"fromServer", pkt.fromServer},
+        {"packetId", pkt.packetId},
+        {"packetName", pkt.packetName},
+        {"object", pkt.object},
+        {"raw", Base64Encode(pkt.raw)}
+    };
 
-    bool ret = ((bool (*)(void*, HttpNetMsg*, void*, void*))o_BuildMessage)(thisPtr, msg, data, method);
+    std::string output = j.dump(4);
 
-    return ret;
+    WriteToFile("%s\n", output.c_str());
+    PushEvent(output);
+
+    return ((bool (*)(void*, HttpNetMsg*, void*, void*))o_BuildMessage)(thisPtr, msg, data, method);
 }

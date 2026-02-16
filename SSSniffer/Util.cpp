@@ -1,8 +1,45 @@
 ﻿#include "pch.h"
 #include "Util.h"
 #include <string>
-#include <codecvt>
 #include <iomanip>
+#include <wincrypt.h>
+
+std::string Base64Encode(const std::string& input) {
+    if (input.empty()) {
+        return "";
+    }
+
+    DWORD len = 0;
+    if (!CryptBinaryToStringA(reinterpret_cast<const BYTE*>(input.data()), static_cast<DWORD>(input.size()), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &len)) {
+        return "";
+    }
+
+    std::string output(len, '\0');
+    if (!CryptBinaryToStringA(reinterpret_cast<const BYTE*>(input.data()), static_cast<DWORD>(input.size()), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, output.data(), &len)) {
+        return "";
+    }
+
+    output.resize(len);
+    return output;
+}
+
+std::string Base64Decode(const std::string& input) {
+    if (input.empty()) return "";
+
+    DWORD len = 0;
+    if (!CryptStringToBinaryA(input.c_str(), static_cast<DWORD>(input.size()), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &len, nullptr, nullptr)) {
+        return "";
+    }
+
+    std::string output(len, '\0');
+
+    if (!CryptStringToBinaryA(input.c_str(), static_cast<DWORD>(input.size()), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, reinterpret_cast<BYTE*>(output.data()), &len, nullptr, nullptr)) {
+        return "";
+    }
+
+    output.resize(len);
+    return output;
+}
 
 std::wstring Il2cppToWstring(Il2CppString* str) {
     if (!str || str->length <= 0)
@@ -52,7 +89,8 @@ bool ReplaceIl2CppStringChars(Il2CppString* target, const std::wstring& ws)
 
 std::string ByteArrayToHex(const uint8_t* data, size_t len)
 {
-    if (!data || len == 0) return "";
+    if (!data || len == 0)
+        return "";
 
     std::ostringstream oss;
     oss << std::hex << std::setfill('0');
@@ -65,6 +103,8 @@ std::string ByteArrayToHex(const uint8_t* data, size_t len)
 
 std::string ByteArrayToHex(Byte__Array* arr)
 {
-    if (!arr) return "";
+    if (!arr)
+        return "";
+
     return ByteArrayToHex(arr->vector, arr->max_length);
 }

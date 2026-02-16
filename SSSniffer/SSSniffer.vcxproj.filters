@@ -45,6 +45,15 @@
     <ClInclude Include="Memory.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="BinaryDeserializer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FrontendServer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Data.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -72,6 +81,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Memory.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="BinaryDeserializer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FrontendServer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

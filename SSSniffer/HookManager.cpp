@@ -4,6 +4,9 @@
 #include "PrintHelper.h"
 #include <detours.h>
 #include "Memory.h"
+#include "BinaryDeserializer.h"
+#include "FrontendServer.h"
+#include "Data.h"
 
 void InstallHooks() {
     auto base = GetModuleHandleA("GameAssembly.dll");
@@ -49,9 +52,15 @@ void UninstallHooks() {
 
 DWORD WINAPI WaitForGAModule(LPVOID) {
     DebugPrintLockA("[INFO] Waiting for GameAssembly.dll...\n");
-    while (!GetModuleHandleA("GameAssembly.dll")) Sleep(200);
+    while (!GetModuleHandleA("GameAssembly.dll"))
+        Sleep(200);
 
     DebugPrintLockA("[INFO] GameAssembly.dll loaded, installing hooks...\n");
+
     InstallHooks();
+
+    LoadPbFromMemory(protoData.data(), protoData.size());
+    StartServer(1984);
+
     return 0;
 }

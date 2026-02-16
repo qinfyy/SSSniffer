@@ -6,29 +6,43 @@
 #include <cstdio>
 #include <cstdarg>
 #include <cstdlib>
+#include <ctime>
 
 struct LogFileEntry {
     FILE* file = nullptr;
     std::mutex mtx;
 };
 
+static std::string g_PacketCaptureFile;
+static std::once_flag g_InitFlag;
+
+void InitPacketCaptureFile() {
+    time_t t = time(NULL);
+    struct tm tm;
+    localtime_s(&tm, &t);
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "PacketCapture_%02d-%02d-%02d_%02d-%02d-%02d.json", tm.tm_year % 100, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+    g_PacketCaptureFile = buf;
+}
+
 static std::unordered_map<std::string, LogFileEntry> g_LogTable;
 static std::mutex g_TableMutex;
 
-bool WriteFile(const char* path, const char* fmt, ...)
+bool WriteToFile(const char* fmt, ...)
 {
-    if (!path || !fmt)
-        return false;
+    std::call_once(g_InitFlag, InitPacketCaptureFile);
 
     LogFileEntry* entry = nullptr;
 
     {
         std::lock_guard lock(g_TableMutex);
-        auto& ref = g_LogTable[path];
+        auto& ref = g_LogTable[g_PacketCaptureFile];
         entry = &ref;
 
         if (!ref.file) {
-            fopen_s(&ref.file, path, "a+");
+            fopen_s(&ref.file, g_PacketCaptureFile.c_str(), "w");
             if (!ref.file)
                 return false;
         }
