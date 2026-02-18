@@ -393,7 +393,7 @@
     />
   {/if}
   <button title="Upload PCAP" data-icon="open-in-app" on:click={uploadFile} />
-  <input hidden type="file" bind:this={fileForm} accept=".gcap,.pcap,.pcapng" />
+  <input hidden type="file" bind:this={fileForm} accept=".json" />
   <button title="Clear" data-icon="clear" class="red" on:click={clear} />
   <button 
     title="Settings" 

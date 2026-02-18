@@ -33,8 +33,8 @@ HttpNetMsg* readMessage_Hook(void* thisPtr, Byte__Array* messageBuffer, int32_t 
         }
 
         pkt.raw.assign(data, data + len);
-
-        std::string jsonStr;
+            
+		std::string jsonStr;
         try {
             if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr)) {
                 pkt.object = nlohmann::json::parse(jsonStr);
@@ -85,7 +85,7 @@ bool BuildMessage_Hook(void* thisPtr, HttpNetMsg* msg, void* data, void* method)
         try {
             if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr))
             {
-                    pkt.object = nlohmann::json::parse(jsonStr);
+                pkt.object = nlohmann::json::parse(jsonStr);
             }
             else {
                 pkt.object = nullptr;

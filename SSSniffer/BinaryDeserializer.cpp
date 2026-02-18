@@ -5,7 +5,6 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <WinSock2.h>
 
 #include <google/protobuf/descriptor.h>
@@ -57,55 +56,45 @@ bool LoadPbFromFile(const std::string& path) {
     return LoadPbFromMemory(buffer.data(), static_cast<int>(size));
 }
 
-std::unique_ptr<google::protobuf::Message> DeserializeBinary(const std::string& protoName, const void* binaryData, int dataLen){
+bool DeserializeToJson(int32_t cmdId, const void* binaryData, int dataLen, std::string& outJson) {
     if (!binaryData || dataLen <= 0) {
-        return nullptr;
+        return false;
     }
 
-    const google::protobuf::Descriptor* desc = g_descriptorPool.FindMessageTypeByName(protoName);
-
-    if (!desc) {
-        DebugPrintA("descriptor not found: %s\n", protoName.c_str());
-        return nullptr;
-    }
-
-    const google::protobuf::Message* prototype = g_factory.GetPrototype(desc);
-
-    if (!prototype) {
-        DebugPrintA("unable to obtain proto: %s\n", protoName.c_str());
-        return nullptr;
-    }
-
-    std::unique_ptr<google::protobuf::Message> msg(prototype->New());
-
-    if (!msg->ParseFromArray(binaryData, dataLen)) {
-        DebugPrintA("unable to parse data: %s, data: %s\n", protoName.c_str(), ByteArrayToHex((uint8_t*)binaryData, (size_t)dataLen).c_str());
-        return nullptr;
-    }
-
-    return msg;
-}
-
-bool DeserializeToJson(int32_t cmdId, const void* binaryData, int dataLen, std::string& outJson)
-{
     auto cmdName = GetMsgName(cmdId);
     auto it = kNameToProto.find(cmdName);
     if (it == kNameToProto.end()) {
-        DebugPrintA("unknown packet ID: %d\n", cmdId);
+        DebugPrintA("Unknown packet ID: %d\n", cmdId);
         return false;
     }
 
     const std::string& protoName = it->second;
 
-    auto msg = DeserializeBinary(protoName, binaryData, dataLen);
-    if (!msg) {
+    const google::protobuf::Descriptor* desc = g_descriptorPool.FindMessageTypeByName(protoName);
+    if (!desc) {
+        DebugPrintA("Descriptor not found: %s\n", protoName.c_str());
+        return false;
+    }
+
+    const google::protobuf::Message* prototype = g_factory.GetPrototype(desc);
+
+    if (!prototype) {
+        DebugPrintA("Unable to obtain proto: %s\n", protoName.c_str());
+        return false;
+    }
+
+    std::unique_ptr<google::protobuf::Message> msg(prototype->New());
+
+    if (!msg->ParseFromArray(binaryData, dataLen)) {
+        DebugPrintA("Unable to parse data: %s, data: %s\n", protoName.c_str(),
+            ByteArrayToHex((uint8_t*)binaryData, (size_t)dataLen).c_str());
         return false;
     }
 
     google::protobuf::util::JsonPrintOptions options;
     options.add_whitespace = true;
     if (!google::protobuf::util::MessageToJsonString(*msg, &outJson, options).ok()) {
-        DebugPrintA("failed to serialize cmdId: %d to JSON\n", cmdId);
+        DebugPrintA("Failed to serialize cmdId: %d to JSON\n", cmdId);
         return false;
     }
 
@@ -121,29 +110,13 @@ const std::string& GetMsgName(int32_t cmdId)
 
 bool DeserializeToPacketList(int32_t cmdId, const void* binaryData, int dataLen, bool fromServer, std::vector<Packet>& outPackets)
 {
-    auto cmdName = GetMsgName(cmdId);
-    auto it = kNameToProto.find(cmdName);
-    if (it == kNameToProto.end()) {
-        DebugPrintA("unknown packet ID: %d\n", cmdId);
-        return false;
-    }
-
-    const std::string& protoName = it->second;
-
-    auto msg = DeserializeBinary(protoName, binaryData, dataLen);
-    if (!msg) {
+    std::string jsonStr;
+    auto succ = DeserializeToJson(cmdId, binaryData, dataLen, jsonStr);
+    if (!succ) {
         return false;
     }
 
     nlohmann::json obj{};
-    std::string jsonStr;
-    google::protobuf::util::JsonPrintOptions options;
-    options.add_whitespace = true;
-    if (!google::protobuf::util::MessageToJsonString(*msg, &jsonStr, options).ok()) {
-        DebugPrintA("failed to serialize cmdId: %d to JSON\n", cmdId);
-        return false;
-    }
-
     obj = nlohmann::json::parse(jsonStr, nullptr, false);
 
     Packet packet{};
@@ -156,16 +129,12 @@ bool DeserializeToPacketList(int32_t cmdId, const void* binaryData, int dataLen,
 
     outPackets.push_back(std::move(packet));
 
-    const google::protobuf::Descriptor* desc = msg->GetDescriptor();
-    const google::protobuf::Reflection* reflection = msg->GetReflection();
-    const google::protobuf::FieldDescriptor* field = desc->FindFieldByName("NextPackage");
-
-    if (!field || field->type() != google::protobuf::FieldDescriptor::TYPE_BYTES || !reflection->HasField(*msg, field))
-    {
+    if (!obj.contains("NextPackage") || !obj["NextPackage"].is_string()) {
         return true;
     }
 
-    std::string nextData = reflection->GetString(*msg, field);
+    std::string nextPackage = obj["NextPackage"];
+    std::string nextData = Base64Decode(nextPackage);
     if (nextData.size() < 3) {
         DebugPrintA("NextPackage too small\n");
         return false;
