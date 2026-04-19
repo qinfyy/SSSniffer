@@ -86,8 +86,7 @@ bool DeserializeToJson(int32_t cmdId, const void* binaryData, int dataLen, std::
     std::unique_ptr<google::protobuf::Message> msg(prototype->New());
 
     if (!msg->ParseFromArray(binaryData, dataLen)) {
-        DebugPrintA("Unable to parse data: %s, data: %s\n", protoName.c_str(),
-            ByteArrayToHex((uint8_t*)binaryData, (size_t)dataLen).c_str());
+        DebugPrintA("Unable to parse data: %s, data: %s\n", protoName.c_str(), ByteArrayToHex((uint8_t*)binaryData, (size_t)dataLen).c_str());
         return false;
     }
 
