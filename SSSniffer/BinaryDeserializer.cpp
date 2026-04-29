@@ -115,8 +115,14 @@ bool DeserializeToPacketList(int32_t cmdId, const void* binaryData, int dataLen,
         return false;
     }
 
-    nlohmann::json obj{};
-    obj = nlohmann::json::parse(jsonStr, nullptr, false);
+    Json::Value obj;
+
+    Json::CharReaderBuilder builder;
+    std::string errs;
+    std::istringstream ss(jsonStr);
+    if (!Json::parseFromStream(builder, ss, &obj, &errs)) {
+        obj = Json::nullValue;
+    }
 
     Packet packet{};
     packet.time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -128,11 +134,11 @@ bool DeserializeToPacketList(int32_t cmdId, const void* binaryData, int dataLen,
 
     outPackets.push_back(std::move(packet));
 
-    if (!obj.contains("NextPackage") || !obj["NextPackage"].is_string()) {
+    if (!obj.isObject() || !obj.isMember("NextPackage") || !obj["NextPackage"].isString()) {
         return true;
     }
 
-    std::string nextPackage = obj["NextPackage"];
+    std::string nextPackage = obj["NextPackage"].asString();
     std::string nextData = Base64Decode(nextPackage);
     if (nextData.size() < 3) {
         DebugPrintA("NextPackage too small\n");

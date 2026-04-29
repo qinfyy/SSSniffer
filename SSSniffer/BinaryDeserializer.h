@@ -1,14 +1,14 @@
 ﻿#pragma once
 #include <string>
 #include <vector>
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 
 struct Packet {
     int64_t time;
     bool fromServer;
     int32_t packetId;
     std::string packetName;
-    nlohmann::json object;
+    Json::Value object;
     std::string raw;
 };
 
