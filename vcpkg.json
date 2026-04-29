@@ -1,6 +1,6 @@
 {
   "dependencies": [
-    "protobuf",
-    "nlohmann-json"
+    "jsoncpp",
+    "protobuf"
   ]
 }

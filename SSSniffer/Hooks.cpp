@@ -33,32 +33,41 @@ HttpNetMsg* readMessage_Hook(void* thisPtr, Byte__Array* messageBuffer, int32_t 
         }
 
         pkt.raw.assign(data, data + len);
-            
-		std::string jsonStr;
+
+        std::string jsonStr;
         try {
             if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr)) {
-                pkt.object = nlohmann::json::parse(jsonStr);
+                Json::CharReaderBuilder builder;
+                std::string errs;
+                std::istringstream ss(jsonStr);
+
+                if (!Json::parseFromStream(builder, ss, &pkt.object, &errs)) {
+                    DebugPrintA("[rm] JSON parse failed: %s\n", errs.c_str());
+                    pkt.object = Json::nullValue;
+                }
             }
             else {
-                pkt.object = nullptr;
+                pkt.object = Json::nullValue;
             }
         }
         catch (const std::exception& e) {
             DebugPrintA("[rm] Exception: %s\n", e.what());
-            pkt.object = nullptr;
+            pkt.object = Json::nullValue;
         }
     }
 
-    nlohmann::json j = {
-        {"time", pkt.time},
-        {"fromServer", pkt.fromServer},
-        {"packetId", pkt.packetId},
-        {"packetName", pkt.packetName},
-        {"object", pkt.object},
-        {"raw", Base64Encode(pkt.raw)}
-    };
+    Json::Value j;
+    j["time"] = (Json::Int64)pkt.time;
+    j["fromServer"] = pkt.fromServer;
+    j["packetId"] = pkt.packetId;
+    j["packetName"] = pkt.packetName;
+    j["object"] = pkt.object;
+    j["raw"] = Base64Encode(pkt.raw);
 
-    std::string output = j.dump(4);
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "    ";
+
+    std::string output = Json::writeString(writer, j);
 
     WriteToFile("%s\n", output.c_str());
     PushEvent(output);
@@ -66,7 +75,7 @@ HttpNetMsg* readMessage_Hook(void* thisPtr, Byte__Array* messageBuffer, int32_t 
     return ret;
 }
 
-bool BuildMessage_Hook(void* thisPtr, HttpNetMsg* msg, void* data, void* method){
+bool BuildMessage_Hook(void* thisPtr, HttpNetMsg* msg, void* data, void* method) {
     if (!msg)
         return ((bool (*)(void*, HttpNetMsg*, void*, void*))o_BuildMessage)(thisPtr, msg, data, method);
 
@@ -83,29 +92,38 @@ bool BuildMessage_Hook(void* thisPtr, HttpNetMsg* msg, void* data, void* method)
 
         std::string jsonStr;
         try {
-            if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr))
-            {
-                pkt.object = nlohmann::json::parse(jsonStr);
+            if (DeserializeToJson(pkt.packetId, pkt.raw.data(), pkt.raw.size(), jsonStr)) {
+                Json::CharReaderBuilder builder;
+                std::string errs;
+                std::istringstream ss(jsonStr);
+
+                if (!Json::parseFromStream(builder, ss, &pkt.object, &errs)) {
+                    DebugPrintA("[bm] JSON parse failed: %s\n", errs.c_str());
+                    pkt.object = Json::nullValue;
+                }
             }
             else {
-                pkt.object = nullptr;
+                pkt.object = Json::nullValue;
             }
-        } catch (const std::exception& e) {
+        }
+        catch (const std::exception& e) {
             DebugPrintA("[bm] Exception: %s\n", e.what());
-            pkt.object = nullptr;
+            pkt.object = Json::nullValue;
         }
     }
 
-    nlohmann::json j = {
-        {"time", pkt.time},
-        {"fromServer", pkt.fromServer},
-        {"packetId", pkt.packetId},
-        {"packetName", pkt.packetName},
-        {"object", pkt.object},
-        {"raw", Base64Encode(pkt.raw)}
-    };
+    Json::Value j;
+    j["time"] = (Json::Int64)pkt.time;
+    j["fromServer"] = pkt.fromServer;
+    j["packetId"] = pkt.packetId;
+    j["packetName"] = pkt.packetName;
+    j["object"] = pkt.object;
+    j["raw"] = Base64Encode(pkt.raw);
 
-    std::string output = j.dump(4);
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "    ";
+
+    std::string output = Json::writeString(writer, j);
 
     WriteToFile("%s\n", output.c_str());
     PushEvent(output);

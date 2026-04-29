@@ -15,6 +15,7 @@
 #include <queue>
 #include <chrono>
 #include "PrintHelper.h"
+//#include "../frontend/CppOutput/EmbedFiles.h"
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "urlmon.lib")
@@ -61,28 +62,35 @@ static std::string GetMimeType(const std::string& path) {
 static void HandleStaticFile(SOCKET clientSocket, const std::string& urlPath) {
     std::string path = "./frontend/public" + urlPath;
 
-    if (std::filesystem::is_directory(path)) {
-        if (path.back() != '/' && path.back() != '\\') path += "/";
+    if (path.back() == '/')
         path += "index.html";
+
+    if (std::filesystem::exists(path)) {
+        std::ifstream file(path, std::ios::binary);
+        if (file) {
+            std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            std::string mime = GetMimeType(path);
+            SendResponse(clientSocket, content, mime);
+            return;
+        }
     }
 
-    if (!std::filesystem::exists(path)) {
-        SendResponse(clientSocket, "File Not Found", "text/plain");
+#ifdef USE_EMBEDDED_FILES
+    int embedLen = 0;
+    const char* embedData = nullptr;
+    bool embedOk = false;
+
+    GetEmbedFileData(path.c_str(), embedLen, &embedData, embedOk);
+
+    if (embedOk && embedData && embedLen > 0) {
+        std::string mime = GetMimeType(path);
+        std::string content(embedData, embedLen);
+        SendResponse(clientSocket, content, mime);
         return;
     }
+#endif
 
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        SendResponse(clientSocket, "Cannot open file", "text/plain");
-        return;
-    }
-
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    std::string content = ss.str();
-
-    std::string mime = GetMimeType(path);
-    SendResponse(clientSocket, content, mime);
+    SendResponse(clientSocket, "File Not Found", "text/plain");
 }
 
 static bool RecvRequest(SOCKET clientSocket, std::string& outHeader, std::string& outBody) {
