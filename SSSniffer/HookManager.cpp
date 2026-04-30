@@ -8,9 +8,7 @@
 #include "FrontendServer.h"
 #include "Data.h"
 
-void InstallHooks() {
-    auto base = GetModuleHandleA("GameAssembly.dll");
-
+void InstallHooks(HMODULE base) {
     uintptr_t bmAddr = Scan(base, "4C 89 44 24 ?? 48 89 4C 24 ?? 53 56 57 41 54 41 55 41 56 41 57 48 81 EC ?? ?? ?? ?? 4D 8B F8 4C 8B E2");
     uintptr_t rmAddr = Scan(base, "48 89 5C 24 ?? 48 89 74 24 ?? 57 41 56 41 57 48 83 EC ?? 45 8B F1 41 8B F8 48 8B F2 80 3D ?? ?? ?? ?? ??");
     
@@ -50,14 +48,37 @@ void UninstallHooks() {
     DetourTransactionCommit();
 }
 
+bool IsRunByRundll32()
+{
+    wchar_t path[MAX_PATH];
+    if (GetModuleFileNameW(NULL, path, MAX_PATH) == 0)
+        return false;
+
+    wchar_t* p1 = wcsrchr(path, L'\\');
+    wchar_t* p2 = wcsrchr(path, L'/');
+
+    wchar_t* name = path;
+    if (p1 && p2)
+        name = (p1 > p2 ? p1 : p2) + 1;
+    else if (p1)
+        name = p1 + 1;
+    else if (p2)
+        name = p2 + 1;
+
+    return (_wcsicmp(name, L"rundll32.exe") == 0);
+}
+
 DWORD WINAPI WaitForGAModule(LPVOID) {
-    DebugPrintLockA("[INFO] Waiting for GameAssembly.dll...\n");
-    while (!GetModuleHandleA("GameAssembly.dll"))
-        Sleep(200);
+    if (!IsRunByRundll32()) {
+        DebugPrintLockA("[INFO] Waiting for GameAssembly.dll...\n");
+        HMODULE base;
+        while (!(base = GetModuleHandle(L"GameAssembly.dll")))
+            Sleep(200);
 
-    DebugPrintLockA("[INFO] GameAssembly.dll loaded, installing hooks...\n");
+        DebugPrintLockA("[INFO] GameAssembly.dll loaded, installing hooks...\n");
 
-    InstallHooks();
+        InstallHooks(base);
+    }
 
     LoadPbFromMemory(protoData.data(), protoData.size());
     StartServer(1984);
