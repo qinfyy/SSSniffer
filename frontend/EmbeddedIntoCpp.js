@@ -1,4 +1,4 @@
-const fs = require("fs").promises;
+const fs = require("fs");
 const path = require("path");
 const iconv = require("iconv-lite");
 
@@ -9,11 +9,11 @@ function getArg(flag, defaultValue) {
     return i !== -1 && args[i + 1] ? args[i + 1] : defaultValue;
 }
 
-const MODE = getArg("--mode", "split");
-const ROOT = getArg("--root", ".\\public");
+const MODE = getArg("--mode", "header");
+const ROOT = getArg("--root", ".\\dist");
 const OUT = getArg("--out", ".\\CppOutput\\EmbedFiles");
 const MAX_LINE = parseInt(getArg("--maxline", "1023"), 10);
-const PATH_PREFIX = getArg("--prefix", "./frontend/public");
+const PATH_PREFIX = getArg("--prefix", "./dist");
 
 if (MODE !== "header" && MODE !== "split") {
     console.error(`[ERROR] Unsupported mode: ${MODE}`);
@@ -64,23 +64,53 @@ function toSignedByte(n) {
     return n > 127 ? n - 256 : n;
 }
 
-async function walk(dir, base = "") {
-    let res = [];
-    const files = await fs.readdir(dir);
-
-    for (const f of files) {
-        const full = path.join(dir, f);
-        const rel = path.join(base, f).replace(/\\/g, "/");
-        const stat = await fs.stat(full);
-
-        if (stat.isDirectory()) {
-            res = res.concat(await walk(full, rel));
-        } else {
-            res.push({ full, rel });
+function walk(dir, base = "", callback) {
+    fs.readdir(dir, (err, files) => {
+        if (err) {
+            callback(err);
+            return;
         }
-    }
 
-    return res;
+        let pending = files.length;
+        if (pending === 0) {
+            callback(null, []);
+            return;
+        }
+
+        const results = [];
+
+        files.forEach(f => {
+            const full = path.join(dir, f);
+            const rel = path.join(base, f).replace(/\\/g, "/");
+
+            fs.stat(full, (err, stat) => {
+                if (err) {
+                    callback(err);
+                    return;
+                }
+
+                if (stat.isDirectory()) {
+                    walk(full, rel, (err, subResults) => {
+                        if (err) {
+                            callback(err);
+                            return;
+                        }
+                        results.push(...subResults);
+                        pending--;
+                        if (pending === 0) {
+                            callback(null, results);
+                        }
+                    });
+                } else {
+                    results.push({ full, rel });
+                    pending--;
+                    if (pending === 0) {
+                        callback(null, results);
+                    }
+                }
+            });
+        });
+    });
 }
 
 function makeArray(buffer, varName, isHeader) {
@@ -106,37 +136,58 @@ function makeArray(buffer, varName, isHeader) {
     return lines.join("\n");
 }
 
-async function collect() {
-    const files = await walk(ROOT);
+function collect(callback) {
+    walk(ROOT, "", (err, files) => {
+        if (err) {
+            callback(err);
+            return;
+        }
 
-    let dataSection = [];
-    let buckets = {};
+        let pending = files.length;
+        if (pending === 0) {
+            callback(null, { dataSection: "", buckets: {} });
+            return;
+        }
 
-    for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const buffer = await fs.readFile(f.full);
-        const name = "F" + (i + 1);
+        const dataSectionParts = [];
+        const buckets = {};
+        let hasError = false;
 
-        const pathStr = concatenatPrefix(f.rel);
-        const pathGbkStr = iconv.encode(pathStr, "gbk");
-        const hash = fnv1a(pathGbkStr);
+        files.forEach((f, idx) => {
+            fs.readFile(f.full, (err, buffer) => {
+                if (hasError) return;
+                if (err) {
+                    hasError = true;
+                    callback(err);
+                    return;
+                }
 
-        console.log(`${pathStr} -> ${hash}`);
+                const name = "F" + (idx + 1);
+                const pathStr = concatenatPrefix(f.rel);
+                const pathGbkStr = iconv.encode(pathStr, "gbk");
+                const hash = fnv1a(pathGbkStr);
 
-        dataSection.push(makeArray(buffer, name, MODE === "header"));
+                console.log(`${pathStr} -> ${hash}`);
 
-        if (!buckets[hash]) buckets[hash] = [];
-        buckets[hash].push({
-            path: pathStr,
-            name,
-            len: buffer.length
+                dataSectionParts.push(makeArray(buffer, name, MODE === "header"));
+
+                if (!buckets[hash]) buckets[hash] = [];
+                buckets[hash].push({
+                    path: pathStr,
+                    name,
+                    len: buffer.length
+                });
+
+                pending--;
+                if (pending === 0) {
+                    callback(null, {
+                        dataSection: dataSectionParts.join("\n"),
+                        buckets
+                    });
+                }
+            });
         });
-    }
-
-    return {
-        dataSection: dataSection.join("\n"),
-        buckets
-    };
+    });
 }
 
 function generateSwitch(buckets) {
@@ -185,10 +236,14 @@ function generateSwitch(buckets) {
     return out.join("\n");
 }
 
-async function generateCpp() {
-    const { dataSection, buckets } = await collect();
+function generateCpp() {
+    collect((err, { dataSection, buckets }) => {
+        if (err) {
+            console.error(err);
+            process.exit(1);
+        }
 
-    const fnvFunc = `
+        const fnvFunc = `
 static uint32_t fnv1a(const char* s)
 {
     uint32_t h = 2166136261u;
@@ -200,12 +255,11 @@ static uint32_t fnv1a(const char* s)
     return h;
 }`;
 
-    const switchCode = generateSwitch(buckets);
+        const switchCode = generateSwitch(buckets);
+        const common = `${dataSection}\n${fnvFunc}\n`;
 
-    const common = `${dataSection}\n${fnvFunc}\n`;
-
-    if (MODE === "header") {
-        const out = `#pragma once
+        if (MODE === "header") {
+            const out = `#pragma once
 #include <string.h>
 #include <stdint.h>
 #define USE_EMBEDDED_FILES
@@ -221,17 +275,25 @@ ${switchCode}
 }
 `;
 
+            const outHeaderPath = `${OUT}.h`;
+            const outHeaderDir = path.dirname(outHeaderPath);
+            fs.mkdir(outHeaderDir, { recursive: true }, (err) => {
+                if (err) {
+                    console.error(err);
+                    process.exit(1);
+                }
+                fs.writeFile(outHeaderPath, out, (err) => {
+                    if (err) {
+                        console.error(err);
+                        process.exit(1);
+                    }
+                    console.log("Generated:", outHeaderPath);
+                });
+            });
+            return;
+        }
 
-        const outHeaderPath = `${OUT}.h`;
-        const outHeaderDir = path.dirname(outHeaderPath);
-        await fs.mkdir(outHeaderDir, { recursive: true });
-
-        await fs.writeFile(outHeaderPath, out);
-        console.log("Generated:", outHeaderPath);
-        return;
-    }
-
-    const h = `#pragma once
+        const h = `#pragma once
 #include <string.h>
 #include <stdint.h>
 #define USE_EMBEDDED_FILES
@@ -239,13 +301,13 @@ ${switchCode}
 void GetEmbedFileData(const char* path,int& outlen,const char** outDataPtr,bool& succ);
 `;
 
-    let outFileName = OUT;
-    const lastSlash = Math.max(OUT.lastIndexOf('/'), OUT.lastIndexOf('\\'));
-    if (lastSlash !== -1) {
-        outFileName = OUT.substring(lastSlash + 1);
-    }
+        let outFileName = OUT;
+        const lastSlash = Math.max(OUT.lastIndexOf('/'), OUT.lastIndexOf('\\'));
+        if (lastSlash !== -1) {
+            outFileName = OUT.substring(lastSlash + 1);
+        }
 
-    const cpp = `#include "${outFileName}.h"
+        const cpp = `#include "${outFileName}.h"
 
 ${common}
 void GetEmbedFileData(const char* path,int& outlen,const char** outDataPtr,bool& succ)
@@ -258,15 +320,27 @@ ${switchCode}
 }
 `;
 
-    const outHeaderDir = path.dirname(OUT);
-    await fs.mkdir(outHeaderDir, { recursive: true });
-    await fs.writeFile(`${OUT}.h`, h);
-    await fs.writeFile(`${OUT}.cpp`, cpp);
-
-    console.log("Generated:", `${OUT}.h + .cpp`);
+        const outHeaderDir = path.dirname(OUT);
+        fs.mkdir(outHeaderDir, { recursive: true }, (err) => {
+            if (err) {
+                console.error(err);
+                process.exit(1);
+            }
+            fs.writeFile(`${OUT}.h`, h, (err) => {
+                if (err) {
+                    console.error(err);
+                    process.exit(1);
+                }
+                fs.writeFile(`${OUT}.cpp`, cpp, (err) => {
+                    if (err) {
+                        console.error(err);
+                        process.exit(1);
+                    }
+                    console.log("Generated:", `${OUT}.h + .cpp`);
+                });
+            });
+        });
+    });
 }
 
-generateCpp().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+generateCpp();

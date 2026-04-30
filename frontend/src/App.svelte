@@ -1,5 +1,6 @@
 <script>
   let URL = "";
+  let clientID = crypto.randomUUID();
   let sessionStarted = false;
   let currentPacket;
   let tableHost;
@@ -35,48 +36,56 @@
   let autoSavePcapFiles = true;
   let useTcp = false;
 
-  const stream = new EventSource(URL + "/api/stream");
-  stream.addEventListener("open", (e) => {
-    console.log("SSE connected" + JSON.stringify(e));
-  });
+  function getUrl(path) {
+    return `${URL}${path}?clientID=${clientID}`;
+  }
 
-  stream.addEventListener("packetNotify", (e) => {
-    const { time, fromServer, packetId, packetName, object, raw } = JSON.parse(
-      e.data
-    );
-    
-    packetCounter++;
+  let stream = null;
 
-    console.log(time, fromServer, packetId, packetName, object, raw);
-    if (packetId === 0) {
-      packetIndex = 0;
-      firstTime = time;
-    }
-    packetIndex++;
-
-    const newPacket = {
-      globalId: packetCounter,
-      reltime: time - firstTime === 0 ? null : (time - firstTime) / 1000,
-      index: packetIndex,
-      packetID: packetId,
-      protoName: packetName,
-      source: !fromServer,
-      object: object,
-      packet: raw,
-      decode: protoRawDecode(raw)
-    };
-	 
-    tick().then(() => {
-      Packets = Packets.concat(newPacket);
+  function initStream() {
+    stream = new EventSource(getUrl("/api/stream"));
+    stream.addEventListener("open", (e) => {
+      console.log("SSE connected" + JSON.stringify(e));
     });
-  });
+
+    stream.addEventListener("packetNotify", (e) => {
+      const { time, fromServer, packetId, packetName, object, raw } = JSON.parse(
+        e.data
+      );
+      
+      packetCounter++;
+
+      console.log(time, fromServer, packetId, packetName, object, raw);
+      if (packetId === 0) {
+        packetIndex = 0;
+        firstTime = time;
+      }
+      packetIndex++;
+
+      const newPacket = {
+        globalId: packetCounter,
+        reltime: time - firstTime === 0 ? null : (time - firstTime) / 1000,
+        index: packetIndex,
+        packetID: packetId,
+        protoName: packetName,
+        source: !fromServer,
+        object: object,
+        packet: raw,
+        decode: protoRawDecode(raw)
+      };
+       
+      tick().then(() => {
+        Packets = Packets.concat(newPacket);
+      });
+    });
+  }
 
   function startSession() {
-    fetch(URL + "/api/start");
+    fetch(getUrl("/api/start"));
     sessionStarted = true;
   }
   function stopSession() {
-    fetch(URL + "/api/stop");
+    fetch(getUrl("/api/stop"));
     sessionStarted = false;
   }
 
@@ -86,7 +95,7 @@
   function sendFile(e) {
     const formData = new FormData();
     formData.append("file", this.files[0]);
-    fetch(URL + "/api/upload", {
+    fetch(getUrl("/api/upload"), {
       method: "POST",
       body: formData,
     });
@@ -273,9 +282,14 @@
   }
 
   onMount(async () => {
+    // 先注册
+    await fetch(getUrl("/api/registration"));
+    
+    initStream();
+    
     fileForm.addEventListener("change", sendFile, false);
     
-    const response = await fetch(`${URL}/api/GetConfig`);
+    const response = await fetch(getUrl("/api/GetConfig"));
     if (response.ok) {
       const data = await response.json();
       startPort = data.minKcpPort.toString();
@@ -356,7 +370,7 @@
       useTcp: useTcp
     };
 
-    const response = await fetch(`${URL}/api/SetConfig`, {
+    const response = await fetch(getUrl("/api/SetConfig"), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -393,7 +407,7 @@
     />
   {/if}
   <button title="Upload PCAP" data-icon="open-in-app" on:click={uploadFile} />
-  <input hidden type="file" bind:this={fileForm} accept=".json" />
+  <input hidden type="file" bind:this={fileForm} accept=".gcap,.pcap,.pcapng" />
   <button title="Clear" data-icon="clear" class="red" on:click={clear} />
   <button 
     title="Settings" 

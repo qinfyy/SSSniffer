@@ -5,7 +5,7 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "start": "sirv public --no-clear",
+    "start": "sirv dist --no-clear",
     "embedtocpp": "node ./EmbeddedIntoCpp.js"
   },
   "devDependencies": {

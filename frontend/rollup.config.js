@@ -4,6 +4,7 @@ import resolve from '@rollup/plugin-node-resolve';
 import livereload from 'rollup-plugin-livereload';
 import { terser } from 'rollup-plugin-terser';
 import css from 'rollup-plugin-css-only';
+import { mkdir, cp } from 'fs/promises';
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -28,21 +29,30 @@ function serve() {
 	};
 }
 
+async function copyPublicToDist() {
+	if (!production)
+		return;
+	
+	await mkdir('dist', { recursive: true });
+	await cp('public', 'dist', { recursive: true, force: true });
+}
+
 export default {
 	input: 'src/main.js',
 	output: {
 		sourcemap: true,
 		format: 'iife',
 		name: 'app',
-		file: 'public/build/bundle.js',
+		file: 'dist/build/bundle.js',
 		inlineDynamicImports: true,
 	},
 	plugins: [
 		svelte({
-			compilerOptions: {
+			compilerOptions: { 
 				// enable run-time checks when not in production
 				dev: !production
-			}
+			} 
+		
 		}),
 		// we'll extract any component CSS out into
 		// a separate file - better for performance
@@ -53,11 +63,15 @@ export default {
 		// some cases you'll need additional configuration -
 		// consult the documentation for details:
 		// https://github.com/rollup/plugins/tree/master/packages/commonjs
-		resolve({
-			browser: true,
-			dedupe: ['svelte']
-		}),
+		resolve({ browser: true, dedupe: ['svelte'] }),
 		commonjs(),
+
+		{
+			name: 'copy-public',
+			async writeBundle() {
+				await copyPublicToDist();
+			}
+		},
 
 		// In dev mode, call `npm run start` once
 		// the bundle has been generated
@@ -71,7 +85,5 @@ export default {
 		// instead of npm run dev), minify
 		production && terser()
 	],
-	watch: {
-		clearScreen: false
-	}
+	watch: { clearScreen: false }
 };

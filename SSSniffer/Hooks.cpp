@@ -70,7 +70,12 @@ HttpNetMsg* readMessage_Hook(void* thisPtr, Byte__Array* messageBuffer, int32_t 
     std::string output = Json::writeString(writer, j);
 
     WriteToFile("%s\n", output.c_str());
-    PushEvent(output);
+    std::string activeID;
+    g_activeMutex.lock();
+    activeID = g_activeClientID;
+	g_activeMutex.unlock();
+
+    PushEvent(output, activeID);
 
     return ret;
 }
@@ -126,7 +131,12 @@ bool BuildMessage_Hook(void* thisPtr, HttpNetMsg* msg, void* data, void* method)
     std::string output = Json::writeString(writer, j);
 
     WriteToFile("%s\n", output.c_str());
-    PushEvent(output);
+    std::string activeID;
+    g_activeMutex.lock();
+    activeID = g_activeClientID;
+	g_activeMutex.unlock();
+
+    PushEvent(output, activeID);
 
     return ((bool (*)(void*, HttpNetMsg*, void*, void*))o_BuildMessage)(thisPtr, msg, data, method);
 }
