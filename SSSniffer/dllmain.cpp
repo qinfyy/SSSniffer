@@ -47,3 +47,9 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     }
     return TRUE;
 }
+
+extern "C" __declspec(dllexport)
+void CALLBACK EntryPoint(HWND hwnd, HINSTANCE hinst, LPSTR cmd, int show)
+{
+    Sleep(INFINITE);
+}
