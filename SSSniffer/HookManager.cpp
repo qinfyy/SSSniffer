@@ -58,12 +58,15 @@ bool IsRunByRundll32()
     wchar_t* p2 = wcsrchr(path, L'/');
 
     wchar_t* name = path;
-    if (p1 && p2)
+    if (p1 && p2) {
         name = (p1 > p2 ? p1 : p2) + 1;
-    else if (p1)
+    }
+    else if (p1) {
         name = p1 + 1;
-    else if (p2)
+    }
+    else if (p2) {
         name = p2 + 1;
+    }
 
     return (_wcsicmp(name, L"rundll32.exe") == 0);
 }
