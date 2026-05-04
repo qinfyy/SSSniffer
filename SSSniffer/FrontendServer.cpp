@@ -41,21 +41,45 @@ static void SendResponse(SOCKET clientSocket, const std::string& body, const std
     closesocket(clientSocket);
 }
 
-static std::string GetMimeType(const std::string& path) {
-    std::string mime = "application/octet-stream";
-    if (!path.empty()) {
-        wchar_t wPath[MAX_PATH];
-        MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wPath, MAX_PATH);
+static std::string GetMimeType(const std::string& path, const std::string& data)
+{
+    std::string mime = "text/plain";
 
-        LPWSTR mimeType = NULL;
-        HRESULT hr = FindMimeFromData(NULL, wPath, NULL, 0, NULL, 0, &mimeType, 0);
-        if (SUCCEEDED(hr) && mimeType) {
-            char buffer[256] = { 0 };
-            WideCharToMultiByte(CP_UTF8, 0, mimeType, -1, buffer, 256, NULL, NULL);
-            mime = buffer;
-            CoTaskMemFree(mimeType);
-        }
+    wchar_t wPath[MAX_PATH] = { 0 };
+    LPCWSTR pwPath = nullptr;
+
+    if (!path.empty()) {
+        MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, wPath, MAX_PATH);
+        pwPath = wPath;
     }
+
+    LPWSTR mimeType = nullptr;
+    char* pData = NULL;
+    DWORD dataSize = 0;
+    if (!data.empty()) {
+        pData = const_cast<char*>(data.data());
+        dataSize = static_cast<DWORD>(data.size());
+    }
+
+    HRESULT hr = FindMimeFromData(NULL, pwPath, pData, dataSize, NULL, 0, &mimeType, 0);
+    if (SUCCEEDED(hr) && mimeType) {
+        int len = WideCharToMultiByte(CP_UTF8, 0, mimeType, -1, NULL, 0, NULL, NULL);
+        if (len > 0) {
+			char* tmp = (char*)malloc(len);
+            if (!tmp) {
+                CoTaskMemFree(mimeType);
+                DebugPrintA("[FrontendServer] 内存分配失败\n");
+                return mime;
+            }
+
+            WideCharToMultiByte(CP_UTF8, 0, mimeType, -1, tmp, len, NULL, NULL);
+            mime = tmp;
+            free(tmp);
+        }
+
+        CoTaskMemFree(mimeType);
+    }
+
     return mime;
 }
 
@@ -68,9 +92,9 @@ static void HandleStaticFile(SOCKET clientSocket, const std::string& urlPath) {
     if (std::filesystem::exists(path)) {
         std::ifstream file(path, std::ios::binary);
         if (file) {
-            std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            std::string mime = GetMimeType(path);
-            SendResponse(clientSocket, content, mime);
+            std::string fileData((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            std::string mime = GetMimeType(path, fileData);
+            SendResponse(clientSocket, fileData, mime);
             return;
         }
     }
@@ -83,9 +107,9 @@ static void HandleStaticFile(SOCKET clientSocket, const std::string& urlPath) {
     GetEmbedFileData(path.c_str(), embedLen, &embedData, embedOk);
 
     if (embedOk && embedData && embedLen > 0) {
-        std::string mime = GetMimeType(path);
-        std::string content(embedData, embedLen);
-        SendResponse(clientSocket, content, mime);
+        std::string fileData(embedData, embedLen);
+        std::string mime = GetMimeType(path, fileData);
+        SendResponse(clientSocket, fileData, mime);
         return;
     }
 #endif
@@ -106,7 +130,10 @@ static bool RecvRequest(SOCKET clientSocket, std::string& outHeader, std::string
     while ((headerEnd = requestData.find("\r\n\r\n")) == std::string::npos) {
         char buf[BUF_SIZE];
         int r = recv(clientSocket, buf, BUF_SIZE, 0);
-        if (r <= 0) return false;
+        if (r <= 0) {
+            return false;
+        }
+
         requestData.append(buf, r);
     }
 
@@ -134,9 +161,12 @@ static bool RecvRequest(SOCKET clientSocket, std::string& outHeader, std::string
         while (outBody.size() < (size_t)contentLength) {
             char buf[BUF_SIZE];
             int r = recv(clientSocket, buf, BUF_SIZE, 0);
-            if (r <= 0) return false;
+            if (r <= 0) {
+                return false;
+            }
 
-            size_t toCopy = min((size_t)r, (size_t)(contentLength - outBody.size()));
+			size_t spaceLeft = contentLength - outBody.size();
+            size_t toCopy = min((size_t)r, spaceLeft);
             outBody.append(buf, toCopy);
         }
     }
