@@ -121,8 +121,13 @@ function makeArray(buffer, varName, isHeader) {
     let line = prefix;
 
     for (let i = 0; i < buffer.length; i++) {
-        let token = toSignedByte(buffer[i]).toString() + ",";
-        if (line !== prefix) token = " " + token;
+        let valueStr = toSignedByte(buffer[i]).toString();
+        let comma = (i === buffer.length - 1) ? "" : ",";
+        let token = valueStr + comma;
+
+        if (line !== prefix) {
+            token = " " + token;
+        }
 
         if (line.length + token.length > MAX_LINE) {
             lines.push(line);
@@ -132,7 +137,13 @@ function makeArray(buffer, varName, isHeader) {
         }
     }
 
-    lines.push(line + suffix);
+    if (line.length + suffix.length > MAX_LINE) {
+        lines.push(line);
+        lines.push(suffix);
+    } else {
+        lines.push(line + suffix);
+    }
+
     return lines.join("\n");
 }
 
