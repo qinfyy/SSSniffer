@@ -1,7 +1,12 @@
 use anyhow::{Context, Result, bail, ensure};
 use mlua::{ChunkMode, HookTriggers, Lua, LuaOptions, StdLib, Table, Value as LuaValue};
-use prost::Message;
-use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor};
+use prost::{
+    Message,
+    encoding::{
+        DecodeContext, WireType, decode_key, decode_varint, encode_key, encode_varint, skip_field,
+    },
+};
+use prost_reflect::{DescriptorPool, DynamicMessage, Kind, MessageDescriptor};
 use prost_types::{FileDescriptorProto, FileDescriptorSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,10 +86,109 @@ impl Protocol {
             .messages
             .get(&id)
             .with_context(|| format!("Unknown packet ID: {id}"))?;
-        let message = DynamicMessage::decode(descriptor.clone(), payload)
-            .with_context(|| format!("Unable to decode {} ({id})", descriptor.full_name()))?;
+        let message = match DynamicMessage::decode(descriptor.clone(), payload) {
+            Ok(message) => message,
+            Err(original) => {
+                let mut input = payload;
+                let mut skipped = 0;
+                let compatible = compatible_payload(descriptor, &mut input, None, 0, &mut skipped)
+                    .with_context(|| {
+                        format!(
+                            "Unable to decode {} ({id}): {original}",
+                            descriptor.full_name()
+                        )
+                    })?;
+                ensure!(
+                    skipped > 0,
+                    "Unable to decode {} ({id}): {original}",
+                    descriptor.full_name()
+                );
+                let message = DynamicMessage::decode(descriptor.clone(), compatible.as_slice())
+                    .with_context(|| {
+                        format!("Unable to decode {} ({id})", descriptor.full_name())
+                    })?;
+                crate::DebugPrintLockln!(
+                    "[WARN] Decoded {} ({id}) with C++ compatibility: skipped {skipped} fields with mismatched wire types; update proto to decode these fields",
+                    descriptor.full_name()
+                );
+                message
+            }
+        };
         serde_json::to_value(message).context("Unable to serialize protobuf to JSON")
     }
+}
+
+// C++ treats known tags with an unexpected wire type as unknown fields, including nested messages.
+// Normalize only the decoding copy; the capture retains the complete original payload.
+fn compatible_payload(
+    descriptor: &MessageDescriptor,
+    input: &mut &[u8],
+    end_group: Option<u32>,
+    depth: usize,
+    skipped: &mut usize,
+) -> Result<Vec<u8>> {
+    ensure!(depth < 100, "Protobuf recursion limit reached");
+    let mut output = Vec::new();
+    while !input.is_empty() {
+        let start = *input;
+        let (number, wire) = decode_key(input)?;
+        if wire == WireType::EndGroup {
+            ensure!(end_group == Some(number), "Unexpected protobuf end group");
+            return Ok(output);
+        }
+        let field = descriptor
+            .get_field(number)
+            .map(|field| (field.kind(), field.is_list(), field.is_group()))
+            .or_else(|| {
+                descriptor
+                    .get_extension(number)
+                    .map(|field| (field.kind(), field.is_list(), field.is_group()))
+            });
+        if let Some((kind, list, group)) = field {
+            let expected = match &kind {
+                Kind::Double | Kind::Fixed64 | Kind::Sfixed64 => WireType::SixtyFourBit,
+                Kind::Float | Kind::Fixed32 | Kind::Sfixed32 => WireType::ThirtyTwoBit,
+                Kind::Message(_) if group => WireType::StartGroup,
+                Kind::String | Kind::Bytes | Kind::Message(_) => WireType::LengthDelimited,
+                _ => WireType::Varint,
+            };
+            let packed = list
+                && wire == WireType::LengthDelimited
+                && matches!(
+                    expected,
+                    WireType::Varint | WireType::ThirtyTwoBit | WireType::SixtyFourBit
+                );
+            if wire != expected && !packed {
+                skip_field(wire, number, input, DecodeContext::default())?;
+                *skipped += 1;
+                continue;
+            }
+            if let Kind::Message(nested) = kind {
+                let value = if group {
+                    compatible_payload(&nested, input, Some(number), depth + 1, skipped)?
+                } else {
+                    let length = decode_varint(input)?;
+                    ensure!(length <= input.len() as u64, "Truncated protobuf message");
+                    let (mut value, rest) = input.split_at(length as usize);
+                    *input = rest;
+                    compatible_payload(&nested, &mut value, None, depth + 1, skipped)?
+                };
+                encode_key(number, wire, &mut output);
+                if !group {
+                    encode_varint(value.len() as u64, &mut output);
+                }
+                output.extend_from_slice(&value);
+                if group {
+                    encode_key(number, WireType::EndGroup, &mut output);
+                }
+                continue;
+            }
+        }
+        skip_field(wire, number, input, DecodeContext::default())?;
+        output.extend_from_slice(&start[..start.len() - input.len()]);
+    }
+    ensure!(end_group.is_none(), "Unterminated protobuf group");
+    Ok(output)
 }
 
 fn load_commands(path: &Path) -> Result<(HashMap<i32, String>, HashMap<i32, String>)> {

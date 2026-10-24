@@ -68,11 +68,15 @@ pub fn start(state: Arc<AppState>) -> Result<()> {
             let mut log_failed = false;
             for raw in receiver {
                 let name = state.protocol.name(raw.id);
-                let object = match state.protocol.decode(raw.id, &raw.data) {
-                    Ok(object) => Some(object),
-                    Err(error) => {
-                        DebugPrintLockln!("[WARN] {error:#}");
-                        None
+                let object = if raw.data.is_empty() {
+                    None
+                } else {
+                    match state.protocol.decode(raw.id, &raw.data) {
+                        Ok(object) => Some(object),
+                        Err(error) => {
+                            DebugPrintLockln!("[WARN] {error:#}");
+                            None
+                        }
                     }
                 };
                 let packet = Packet {

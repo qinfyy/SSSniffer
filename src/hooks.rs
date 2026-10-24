@@ -157,7 +157,11 @@ unsafe extern "system" fn build_message(
 }
 
 unsafe fn snapshot(message: *mut HttpNetMsg, from_server: bool) {
-    if message.is_null() || (*message).body.is_null() {
+    if message.is_null() {
+        return;
+    }
+    if (*message).body.is_null() {
+        capture::enqueue(i32::from((*message).msg_id), from_server, &[]);
         return;
     }
     let body = &*(*message).body;
