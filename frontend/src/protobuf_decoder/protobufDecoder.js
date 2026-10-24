@@ -2,7 +2,8 @@
   Source: https://github.com/pawitp/protobuf-decoder by pawitp
   Modified to adapt common-js
  */
-const { decodeVarint } = require("./varintUtils");
+// const { decodeVarint } = require("./varintUtils");
+import { decodeVarint } from './varintUtils.js';
 
 class BufferReader {
   constructor(buffer) {
@@ -132,6 +133,6 @@ function typeToString(type) {
   }
 }
 
-module.exports = {
+export {
   TYPES, decodeProto, typeToString
 }

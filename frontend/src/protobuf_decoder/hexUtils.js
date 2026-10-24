@@ -2,7 +2,8 @@
   Source: https://github.com/pawitp/protobuf-decoder by pawitp
   Modified to adapt common-js
  */
-const Buffer = require('buffer/').Buffer
+// const Buffer = require('buffer/').Buffer
+import { Buffer } from 'buffer';
 
 function parseInput(input) {
   const normalizedInput = input.replace(/\s/g, "");
@@ -54,6 +55,6 @@ function bufferLeToBeHex(buffer) {
   return output;
 }
 
-module.exports = {
+export {
   parseInput, isHex, bufferToPrettyHex, bufferLeToBeHex
 }

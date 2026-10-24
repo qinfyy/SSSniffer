@@ -1,14 +1,7 @@
-const { decodeProto, TYPES } = require("./protobuf_decoder/protobufDecoder");
-const {
-  decodeFixed32,
-  decodeFixed64,
-  decodeVarintParts,
-} = require("./protobuf_decoder/protobufPartDecoder");
-const { parseInput } = require("./protobuf_decoder/hexUtils");
-const {
-  decodeVarint,
-  interpretAsSignedType,
-} = require("./protobuf_decoder/varintUtils");
+import { decodeProto, TYPES } from "./protobuf_decoder/protobufDecoder.js";
+import { decodeFixed32, decodeFixed64, decodeVarintParts } from "./protobuf_decoder/protobufPartDecoder.js";
+import { parseInput } from "./protobuf_decoder/hexUtils.js";
+import { decodeVarint, interpretAsSignedType } from "./protobuf_decoder/varintUtils.js";
 
 function parseType(decodeList) {
   return decodeList.reduce((pre, cur, index, arr) => {
@@ -108,6 +101,6 @@ function protoRawDecode(raw) {
   return processProtoPart(raw);
 }
 
-module.exports = {
+export {
   protoRawDecode,
 };

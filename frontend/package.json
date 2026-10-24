@@ -1,30 +1,24 @@
 {
-  "name": "svelte-app",
-  "version": "1.0.0",
+  "name": "frontend",
   "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "build": "rollup -c",
-    "dev": "rollup -c -w",
-    "start": "sirv dist --no-clear",
-    "embedtocpp": "node ./EmbeddedIntoCpp.js"
-  },
-  "devDependencies": {
-    "@rollup/plugin-commonjs": "^17.1.0",
-    "@rollup/plugin-node-resolve": "^11.2.1",
-    "rollup": "^2.75.6",
-    "rollup-plugin-css-only": "^3.1.0",
-    "rollup-plugin-livereload": "^2.0.5",
-    "rollup-plugin-svelte": "^7.1.0",
-    "rollup-plugin-terser": "^7.0.2",
-    "svelte": "^3.49.0",
-    "svelte-highlight": "^5.3.2"
+    "dev": "vite",
+    "test": "node --test src/formatTimestamp.test.js",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.13.5",
     "buffer": "^6.0.3",
-    "iconv-lite": "^0.7.2",
-    "jsbi": "^4.3.0",
-    "sirv-cli": "^2.0.2",
-    "svelte-jsoneditor": "^0.3.60",
-    "svelte-virtual-list-ce": "^3.1.0-beta.2"
+    "jsbi": "^4.3.2",
+    "json-editor-vue": "^0.18.1",
+    "vue": "^3.5.25"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.2",
+    "sass": "^1.97.3",
+    "vite": "^7.3.1"
   }
 }

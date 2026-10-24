@@ -2,9 +2,9 @@
   Source: https://github.com/pawitp/protobuf-decoder by pawitp
   Modified to adapt common-js
  */
-const JSBI = require("jsbi");
-const { bufferLeToBeHex } = require( "./hexUtils");
-const { interpretAsSignedType } = require( "./varintUtils");
+import JSBI from "jsbi";
+import { bufferLeToBeHex } from "./hexUtils.js";
+import { interpretAsSignedType } from "./varintUtils.js";
 
 function decodeFixed32(value) {
   const floatValue = value.readFloatLE(0);
@@ -65,6 +65,6 @@ function twoComplements(uintValue) {
   }
 }
 
-module.exports = {
+export {
   decodeFixed32, decodeFixed64, decodeVarintParts
 }

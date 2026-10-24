@@ -1,6 +1,8 @@
 @echo off
 
-rem start rundll32.exe ".\x64\Debug\version.dll",EntryPoint
-rem start rundll32.exe ".\x64\Release\version.dll",EntryPoint
-start rundll32.exe ".\version.dll",EntryPoint
+if exist "%~dp0version.dll" (
+    start "" rundll32.exe "%~dp0version.dll",EntryPoint
+) else (
+    start "" rundll32.exe "%~dp0target\release\version.dll",EntryPoint
+)
 exit

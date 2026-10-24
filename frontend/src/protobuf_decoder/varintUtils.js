@@ -2,7 +2,7 @@
   Source: https://github.com/pawitp/protobuf-decoder by pawitp
   Modified to adapt common-js
  */
-const JSBI = require("jsbi");
+import JSBI from "jsbi";
 
 const BIGINT_1 = JSBI.BigInt(1);
 const BIGINT_2 = JSBI.BigInt(2);
@@ -45,6 +45,8 @@ function decodeVarint(buffer, offset) {
   };
 }
 
-module.exports = {
-  interpretAsSignedType, decodeVarint
-}
+// module.exports = {
+//   interpretAsSignedType, decodeVarint
+// }
+
+export { interpretAsSignedType, decodeVarint };

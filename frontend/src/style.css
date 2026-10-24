@@ -1,0 +1,261 @@
+:root {
+  /* 主色调 - 专业蓝色系 */
+  --primary-color: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #dbeafe;
+  
+  /* 背景色 - 亮色主题 (默认) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-dark: #1e293b;
+  
+  /* 文字色 - 亮色主题 */
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  --text-light: #ffffff;
+  
+  /* 边框色 - 亮色主题 */
+  --border-light: #e2e8f0;
+  --border-medium: #cbd5e1;
+  --border-dark: #94a3b8;
+  
+  /* 状态色 */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  
+  /* 客户端/服务器色 */
+  --client-bg: #3b82f6;
+  --client-text: #ffffff;
+  --server-bg: #f59e0b;
+  --server-text: #ffffff;
+  
+  /* 选中状态 */
+  --selected-bg: #2563eb;
+  --selected-text: #ffffff;
+  --hover-bg: #f1f5f9;
+  
+  /* 字体 */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-size: 14px;
+  color-scheme: light;
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 黑暗主题 */
+:root.dark-theme {
+  /* 背景色 - 黑暗主题 (偏灰色) */
+  --bg-primary: #2b2b2b;
+  --bg-secondary: #1e1e1e;
+  --bg-tertiary: #3c3c3c;
+  --bg-dark: #141414;
+  
+  /* 文字色 - 黑暗主题 */
+  --text-primary: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --text-tertiary: #707070;
+  --text-light: #ffffff;
+  
+  /* 边框色 - 黑暗主题 */
+  --border-light: #404040;
+  --border-medium: #555555;
+  --border-dark: #666666;
+  
+  /* 选中状态 - 黑暗主题 */
+  --selected-bg: #3b82f6;
+  --selected-text: #ffffff;
+  --hover-bg: #3c3c3c;
+  
+  /* 客户端/服务器色 - 黑暗主题调整 */
+  --client-bg: #2563eb;
+  --client-text: #ffffff;
+  --server-bg: #d97706;
+  --server-text: #ffffff;
+  
+  /* 颜色方案 */
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 按钮样式 */
+button {
+  border-radius: 6px;
+  border: 1px solid var(--border-medium);
+  padding: 0.5em 1em;
+  font-size: 0.9em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+button:focus,
+button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--bg-tertiary);
+}
+
+button.primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--text-light);
+}
+
+button.primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+button.secondary {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-medium);
+  color: var(--text-secondary);
+}
+
+button.secondary:hover:not(:disabled) {
+  background-color: var(--border-medium);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background-color: var(--danger);
+  color: var(--text-light);
+}
+
+/* 输入框样式 */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"] {
+  border-radius: 6px;
+  border: 1px solid var(--border-medium);
+  padding: 0.5em 0.75em;
+  font-size: 0.9em;
+  font-weight: 400;
+  font-family: inherit;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+input::placeholder {
+  color: var(--text-tertiary);
+}
+
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* 链接样式 */
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+/* 卡片样式 */
+.card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 工具提示 */
+[title] {
+  position: relative;
+}
+
+/* 选择文本 */
+::selection {
+  background-color: var(--primary-light);
+  color: var(--primary-color);
+}
