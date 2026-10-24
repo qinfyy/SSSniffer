@@ -13,37 +13,83 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     fs,
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
 
 #[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Config {
-    pub cmdid: PathBuf,
+    pub cmdId: PathBuf,
     pub proto: PathBuf,
+    pub port: u16,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            cmdId: PathBuf::from(r".\data\NetMsgId.lua"),
+            proto: PathBuf::from(r".\data\proto"),
+            port: 1984,
+        }
+    }
 }
 
 impl Config {
     pub fn read(path: &Path) -> Result<Self> {
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("Unable to read {}", path.display()))?;
-        serde_json::from_str(text.trim_start_matches('\u{feff}')).context("Invalid SSSniffer.json")
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                let config = Self::default();
+                match fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                {
+                    Ok(mut file) => {
+                        serde_json::to_writer_pretty(&mut file, &config)?;
+                        file.write_all(b"\n")?;
+                        crate::DebugPrintLockln!(
+                            "[INFO] Created default configuration: {}",
+                            path.display()
+                        );
+                        return Ok(config);
+                    }
+                    Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                        fs::read_to_string(path)
+                            .with_context(|| format!("Unable to read {}", path.display()))?
+                    }
+                    Err(error) => {
+                        return Err(error)
+                            .with_context(|| format!("Unable to create {}", path.display()));
+                    }
+                }
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("Unable to read {}", path.display()));
+            }
+        };
+        let config: Self = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .context("Invalid SSSniffer.json")?;
+        ensure!(config.port != 0, "port must be between 1 and 65535");
+        Ok(config)
     }
 }
 
 pub struct Protocol {
-    names: HashMap<i32, String>,
-    messages: HashMap<i32, MessageDescriptor>,
+    names: HashMap<i16, String>,
+    messages: HashMap<i16, MessageDescriptor>,
 }
 
 impl Protocol {
     pub fn load(config: &Config, base: &Path) -> Result<Self> {
         ensure!(
-            !config.cmdid.as_os_str().is_empty() && !config.proto.as_os_str().is_empty(),
-            "cmdid and proto must not be empty"
+            !config.cmdId.as_os_str().is_empty() && !config.proto.as_os_str().is_empty(),
+            "cmdId and proto must not be empty"
         );
-        let cmdid = base.join(&config.cmdid);
+        let cmdId = base.join(&config.cmdId);
         let proto = base.join(&config.proto);
-        let (names, types) = load_commands(&cmdid)?;
+        let (names, types) = load_commands(&cmdId)?;
         let pool = if proto.is_dir() {
             compile_directory(&proto)?
         } else {
@@ -74,14 +120,14 @@ impl Protocol {
         Ok(Self { names, messages })
     }
 
-    pub fn name(&self, id: i32) -> &str {
+    pub fn name(&self, id: i16) -> &str {
         self.names
             .get(&id)
             .map(String::as_str)
             .unwrap_or("UnknownPacket")
     }
 
-    pub fn decode(&self, id: i32, payload: &[u8]) -> Result<Value> {
+    pub fn decode(&self, id: i16, payload: &[u8]) -> Result<Value> {
         let descriptor = self
             .messages
             .get(&id)
@@ -118,8 +164,6 @@ impl Protocol {
     }
 }
 
-// C++ treats known tags with an unexpected wire type as unknown fields, including nested messages.
-// Normalize only the decoding copy; the capture retains the complete original payload.
 fn compatible_payload(
     descriptor: &MessageDescriptor,
     input: &mut &[u8],
@@ -191,7 +235,7 @@ fn compatible_payload(
     Ok(output)
 }
 
-fn load_commands(path: &Path) -> Result<(HashMap<i32, String>, HashMap<i32, String>)> {
+fn load_commands(path: &Path) -> Result<(HashMap<i16, String>, HashMap<i16, String>)> {
     let source =
         fs::read_to_string(path).with_context(|| format!("Unable to read {}", path.display()))?;
     let lua = Lua::new_with(StdLib::NONE, LuaOptions::default())?;
@@ -236,20 +280,20 @@ fn load_commands(path: &Path) -> Result<(HashMap<i32, String>, HashMap<i32, Stri
     Ok((names, messages))
 }
 
-fn command_id(value: LuaValue) -> Result<i32> {
+fn command_id(value: LuaValue) -> Result<i16> {
     let value = match value {
         LuaValue::Integer(value) => value,
         LuaValue::Number(value)
             if value.is_finite()
                 && value.fract() == 0.0
-                && value >= i32::MIN as f64
-                && value <= i32::MAX as f64 =>
+                && value >= i16::MIN as f64
+                && value <= i16::MAX as f64 =>
         {
             value as i64
         }
         _ => bail!("Invalid command ID in NetMsgId.lua"),
     };
-    i32::try_from(value).context("Command ID is outside int32 range")
+    i16::try_from(value).context("Command ID is outside int16 range")
 }
 
 fn lua_string(value: LuaValue) -> Result<String> {

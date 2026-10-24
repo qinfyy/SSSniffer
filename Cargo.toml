@@ -1,10 +1,9 @@
 [package]
-name = "sssniffer"
+name = "SSSniffer"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "version"
 crate-type = ["cdylib"]
 
 [dependencies]

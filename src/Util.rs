@@ -1,14 +1,62 @@
 use anyhow::{Result, ensure};
 use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
-use windows::Win32::{
-    Foundation::HMODULE,
-    System::{
+use windows::{Win32::{
+    Foundation::HMODULE, Globalization::{GetACP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS, MultiByteToWideChar, WideCharToMultiByte}, System::{
         Diagnostics::Debug::IMAGE_NT_HEADERS64,
         LibraryLoader::GetModuleFileNameW,
         Memory::{MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS, VirtualQuery},
         SystemServices::IMAGE_DOS_HEADER,
     },
-};
+}, core::PCSTR};
+
+pub fn Utf8ToAnsi(s: &str) -> Option<Vec<u8>> {
+    if s.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let utf16Str: Vec<u16> = s.encode_utf16().collect();
+    unsafe {
+        let codePage = GetACP();
+        let sizeNeeded = WideCharToMultiByte(codePage, 0, &utf16Str, None, PCSTR::null(), None);
+
+        if sizeNeeded <= 0 {
+            return None;
+        }
+
+        let mut buffer = vec![0u8; sizeNeeded as usize];
+        let result = WideCharToMultiByte(codePage, 0, &utf16Str, Some(&mut buffer), PCSTR::null(), None);
+
+        if result <= 0 {
+            return None;
+        }
+
+        Some(buffer)
+    }
+}
+
+pub fn AnsiToUtf8(str: &[u8]) -> Option<String> {
+    if str.is_empty() {
+        return Some(String::new());
+    }
+
+    unsafe {
+        let codePage = GetACP();
+        let sizeNeeded = MultiByteToWideChar(codePage, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), str, None);
+
+        if sizeNeeded <= 0 {
+            return None;
+        }
+
+        let mut buffer = vec![0u16; sizeNeeded as usize];
+        let result = MultiByteToWideChar(codePage, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), str, Some(&mut buffer));
+
+        if result <= 0 {
+            return None;
+        }
+
+        String::from_utf16(&buffer).ok()
+    }
+}
 
 pub fn module_path(module: Option<HMODULE>) -> Result<PathBuf> {
     let mut buffer = vec![0u16; 32768];

@@ -20,7 +20,7 @@ pub struct Packet {
     pub from_server: bool,
     #[serde(default)]
     pub object: Option<Value>,
-    pub packet_id: i32,
+    pub packet_id: i16,
     pub packet_name: String,
     pub raw: String,
     pub time: u64,
@@ -28,7 +28,7 @@ pub struct Packet {
 
 struct RawPacket {
     time: u64,
-    id: i32,
+    id: i16,
     from_server: bool,
     data: Vec<u8>,
 }
@@ -42,7 +42,7 @@ pub fn timestamp() -> u64 {
         .as_millis() as u64
 }
 
-pub fn enqueue(id: i32, from_server: bool, data: &[u8]) {
+pub fn enqueue(id: i16, from_server: bool, data: &[u8]) {
     if let Some(queue) = QUEUE.get() {
         let packet = RawPacket {
             time: timestamp(),
@@ -113,7 +113,7 @@ pub fn start(state: Arc<AppState>) -> Result<()> {
                         }
                     }
                 }
-                state.publish_active(Arc::new(packet));
+                state.record(Arc::new(packet));
             }
         })
         .context("Unable to start capture decoder")?;

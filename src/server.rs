@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Multipart, Query, State},
-    http::{Method, StatusCode, Uri, header},
+    http::{HeaderMap, HeaderName, Method, StatusCode, Uri, header},
     response::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
@@ -23,7 +23,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::broadcast;
+use tokio::sync::Notify;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 #[derive(RustEmbed)]
@@ -34,9 +34,58 @@ struct Assets;
 pub struct AppState {
     pub directory: PathBuf,
     pub protocol: Protocol,
-    clients: Mutex<HashMap<String, broadcast::Sender<Arc<Packet>>>>,
-    active: Mutex<Option<String>>,
+    capture: Mutex<CaptureState>,
     hook_error: Mutex<Option<String>>,
+}
+
+#[derive(Default)]
+struct CaptureState {
+    clients: HashMap<String, Arc<Client>>,
+    active: Option<String>,
+    history: Vec<Arc<Packet>>,
+}
+
+#[derive(Default)]
+struct Client {
+    log: Mutex<ClientLog>,
+    changed: Notify,
+}
+
+#[derive(Default)]
+struct ClientLog {
+    packets: Vec<Arc<Packet>>,
+    replayed: bool,
+    closed: bool,
+}
+
+impl Client {
+    fn publish(&self, packet: Arc<Packet>) {
+        self.log
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .packets
+            .push(packet);
+        self.changed.notify_waiters();
+    }
+
+    fn replay(&self, history: &[Arc<Packet>]) {
+        let mut log = self.log.lock().unwrap_or_else(|error| error.into_inner());
+        if log.replayed {
+            return;
+        }
+        log.packets.extend_from_slice(history);
+        log.replayed = true;
+        drop(log);
+        self.changed.notify_waiters();
+    }
+
+    fn close(&self) {
+        self.log
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .closed = true;
+        self.changed.notify_waiters();
+    }
 }
 
 impl AppState {
@@ -44,8 +93,7 @@ impl AppState {
         Self {
             directory,
             protocol,
-            clients: Mutex::new(HashMap::new()),
-            active: Mutex::new(None),
+            capture: Mutex::new(CaptureState::default()),
             hook_error: Mutex::new(None),
         }
     }
@@ -57,32 +105,39 @@ impl AppState {
             .unwrap_or_else(|error| error.into_inner()) = Some(error);
     }
 
-    pub fn publish_active(&self, packet: Arc<Packet>) {
-        let active = self
-            .active
+    pub fn record(&self, packet: Arc<Packet>) {
+        let mut capture = self
+            .capture
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        if let Some(client) = active {
-            self.publish(&client, packet);
+            .unwrap_or_else(|error| error.into_inner());
+        // Serialize history replay and live delivery under one lock to avoid gaps or duplicates.
+        capture.history.push(packet.clone());
+        if let Some(client) = capture
+            .active
+            .as_ref()
+            .and_then(|id| capture.clients.get(id))
+        {
+            client.publish(packet);
         }
     }
 
     fn publish(&self, client: &str, packet: Arc<Packet>) {
-        if let Some(sender) = self
-            .clients
+        if let Some(client) = self
+            .capture
             .lock()
             .unwrap_or_else(|error| error.into_inner())
+            .clients
             .get(client)
         {
-            let _ = sender.send(packet);
+            client.publish(packet);
         }
     }
 
-    fn client(&self, query: &ClientQuery) -> ApiResult<broadcast::Sender<Arc<Packet>>> {
-        self.clients
+    fn client(&self, query: &ClientQuery) -> ApiResult<Arc<Client>> {
+        self.capture
             .lock()
             .unwrap_or_else(|error| error.into_inner())
+            .clients
             .get(&query.client_id)
             .cloned()
             .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "Client is not registered".into()))
@@ -118,7 +173,10 @@ pub async fn serve(listener: tokio::net::TcpListener, state: Arc<AppState>) -> R
                 })
         }))
         .allow_methods([Method::GET, Method::POST])
-        .allow_headers([header::CONTENT_TYPE]);
+        .allow_headers([
+            header::CONTENT_TYPE,
+            HeaderName::from_static("last-event-id"),
+        ]);
     let app = Router::new()
         .route("/api/registration", get(register))
         .route("/api/unregistration", post(unregister))
@@ -144,10 +202,11 @@ async fn register(
     if query.client_id.is_empty() || query.client_id.len() > 128 {
         return Err(ApiError(StatusCode::BAD_REQUEST, "Invalid clientID".into()));
     }
-    let mut clients = state
-        .clients
+    let mut capture = state
+        .capture
         .lock()
         .unwrap_or_else(|error| error.into_inner());
+    let clients = &mut capture.clients;
     if clients.len() >= 64 && !clients.contains_key(&query.client_id) {
         return Err(ApiError(
             StatusCode::TOO_MANY_REQUESTS,
@@ -156,7 +215,7 @@ async fn register(
     }
     clients
         .entry(query.client_id)
-        .or_insert_with(|| broadcast::channel(4096).0);
+        .or_insert_with(|| Arc::new(Client::default()));
     Ok("OK")
 }
 
@@ -164,17 +223,15 @@ async fn unregister(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ClientQuery>,
 ) -> &'static str {
-    state
-        .clients
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .remove(&query.client_id);
-    let mut active = state
-        .active
+    let mut capture = state
+        .capture
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    if active.as_deref() == Some(&query.client_id) {
-        *active = None;
+    if let Some(client) = capture.clients.remove(&query.client_id) {
+        client.close();
+    }
+    if capture.active.as_deref() == Some(&query.client_id) {
+        capture.active = None;
     }
     "OK"
 }
@@ -183,7 +240,6 @@ async fn start_capture(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ClientQuery>,
 ) -> ApiResult<&'static str> {
-    state.client(&query)?;
     if let Some(error) = state
         .hook_error
         .lock()
@@ -192,10 +248,16 @@ async fn start_capture(
     {
         return Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, error.clone()));
     }
-    *state
-        .active
+    let mut capture = state
+        .capture
         .lock()
-        .unwrap_or_else(|error| error.into_inner()) = Some(query.client_id);
+        .unwrap_or_else(|error| error.into_inner());
+    let client = capture
+        .clients
+        .get(&query.client_id)
+        .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "Client is not registered".into()))?;
+    client.replay(&capture.history);
+    capture.active = Some(query.client_id);
     Ok("OK")
 }
 
@@ -203,13 +265,18 @@ async fn stop_capture(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ClientQuery>,
 ) -> ApiResult<&'static str> {
-    state.client(&query)?;
-    let mut active = state
-        .active
+    let mut capture = state
+        .capture
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    if active.as_deref() == Some(&query.client_id) {
-        *active = None;
+    if !capture.clients.contains_key(&query.client_id) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "Client is not registered".into(),
+        ));
+    }
+    if capture.active.as_deref() == Some(&query.client_id) {
+        capture.active = None;
     }
     Ok("OK")
 }
@@ -217,19 +284,46 @@ async fn stop_capture(
 async fn stream(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ClientQuery>,
+    headers: HeaderMap,
 ) -> ApiResult<Response> {
-    let mut receiver = state.client(&query)?.subscribe();
+    let client = state.client(&query)?;
+    let mut cursor = headers
+        .get("last-event-id")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(
+            client
+                .log
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .packets
+                .len(),
+        );
     let stream = async_stream::stream! {
         loop {
-            match receiver.recv().await {
-                Ok(packet) => if let Ok(event) = Event::default().event("packetNotify").json_data(&*packet) {
-                    yield Ok::<Event, Infallible>(event);
-                },
-                Err(broadcast::error::RecvError::Lagged(count)) => {
-                    yield Ok(Event::default().event("captureError").data(format!("SSE dropped {count} packets")));
+            let changed = client.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            let (packets, closed) = {
+                let log = client.log.lock().unwrap_or_else(|error| error.into_inner());
+                let end = cursor.saturating_add(128).min(log.packets.len());
+                (log.packets[cursor..end].to_vec(), log.closed)
+            };
+            if packets.is_empty() {
+                if closed {
+                    break;
                 }
-                Err(broadcast::error::RecvError::Closed) => break,
+                changed.await;
+                continue;
             }
+            for packet in packets {
+                cursor += 1;
+                if let Ok(event) = Event::default().event("packetNotify").id(cursor.to_string()).json_data(&*packet) {
+                    yield Ok::<Event, Infallible>(event);
+                }
+            }
+            tokio::task::yield_now().await;
         }
     };
     Ok(Sse::new(stream)

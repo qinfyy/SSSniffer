@@ -15,6 +15,5 @@ $profile = 'debug'
 if (-not $Debug) { $arguments += '--release'; $profile = 'release' }
 & cargo @arguments
 if ($LASTEXITCODE -ne 0) { throw 'Rust build failed.' }
-$configuration = Join-Path $PSScriptRoot "target\$profile\SSSniffer.json"
-if (-not (Test-Path $configuration)) { Copy-Item -LiteralPath SSSniffer.json -Destination $configuration }
-Write-Host "Built target\$profile\version.dll"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'StandaloneStart.bat') -Destination (Join-Path $PSScriptRoot "target\$profile\StandaloneStart.bat") -Force
+Write-Host "Built target\$profile\sssniffer.dll"

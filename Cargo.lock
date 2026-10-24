@@ -3,6 +3,30 @@
 version = 4
 
 [[package]]
+name = "SSSniffer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "axum",
+ "detours-rs",
+ "mime_guess",
+ "mlua",
+ "prost",
+ "prost-reflect",
+ "prost-types",
+ "protox",
+ "rbase64",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http",
+ "walkdir",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1025,30 +1049,6 @@ name = "spin"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
-
-[[package]]
-name = "sssniffer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "axum",
- "detours-rs",
- "mime_guess",
- "mlua",
- "prost",
- "prost-reflect",
- "prost-types",
- "protox",
- "rbase64",
- "rust-embed",
- "serde",
- "serde_json",
- "tokio",
- "tower-http",
- "walkdir",
- "windows 0.62.2",
-]
 
 [[package]]
 name = "syn"

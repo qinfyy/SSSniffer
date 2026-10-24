@@ -1,8 +1,8 @@
 @echo off
 
-if exist "%~dp0version.dll" (
-    start "" rundll32.exe "%~dp0version.dll",EntryPoint
+if exist "%~dp0SSSniffer.dll" (
+    start "" rundll32.exe "%~dp0SSSniffer.dll",EntryPoint
 ) else (
-    start "" rundll32.exe "%~dp0target\release\version.dll",EntryPoint
+    start "" rundll32.exe "%~dp0target\release\SSSniffer.dll",EntryPoint
 )
 exit

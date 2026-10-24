@@ -48,6 +48,7 @@ fn start() -> Result<()> {
         .to_owned();
     let config_path = directory.join("SSSniffer.json");
     let config = Config::read(&config_path)?;
+    let port = config.port;
     let protocol = Protocol::load(&config, &directory)?;
     let state = Arc::new(AppState::new(directory, protocol));
     let executable = module_path(None)?;
@@ -59,9 +60,9 @@ fn start() -> Result<()> {
         .enable_all()
         .build()?;
     runtime.block_on(async {
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 1984))
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
             .await
-            .context("Unable to bind 127.0.0.1:1984")?;
+            .with_context(|| format!("Unable to bind 127.0.0.1:{port}"))?;
         capture::start(state.clone())?;
         if !standalone {
             let hook_state = state.clone();
@@ -81,7 +82,7 @@ fn start() -> Result<()> {
                 }
             });
         }
-        DebugPrintLockln!("[INFO] SSSniffer listening on http://127.0.0.1:1984");
+        DebugPrintLockln!("[INFO] SSSniffer listening on http://127.0.0.1:{port}");
         server::serve(listener, state).await
     })
 }

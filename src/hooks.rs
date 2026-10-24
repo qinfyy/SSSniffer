@@ -161,7 +161,7 @@ unsafe fn snapshot(message: *mut HttpNetMsg, from_server: bool) {
         return;
     }
     if (*message).body.is_null() {
-        capture::enqueue(i32::from((*message).msg_id), from_server, &[]);
+        capture::enqueue((*message).msg_id, from_server, &[]);
         return;
     }
     let body = &*(*message).body;
@@ -175,5 +175,5 @@ unsafe fn snapshot(message: *mut HttpNetMsg, from_server: bool) {
     {
         payload = &payload[..payload.len() - 16];
     }
-    capture::enqueue(i32::from((*message).msg_id), from_server, payload);
+    capture::enqueue((*message).msg_id, from_server, payload);
 }
