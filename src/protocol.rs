@@ -154,7 +154,7 @@ impl Protocol {
                         format!("Unable to decode {} ({id})", descriptor.full_name())
                     })?;
                 crate::DebugPrintLockln!(
-                    "[WARN] Decoded {} ({id}) with C++ compatibility: skipped {skipped} fields with mismatched wire types; update proto to decode these fields",
+                    "[WARN] Decoded {} ({id}): Skipped {skipped} fields due to wire type mismatches; please update the proto definition to decode these fields.",
                     descriptor.full_name()
                 );
                 message
@@ -236,9 +236,24 @@ fn compatible_payload(
 }
 
 fn load_commands(path: &Path) -> Result<(HashMap<i16, String>, HashMap<i16, String>)> {
-    let source =
-        fs::read_to_string(path).with_context(|| format!("Unable to read {}", path.display()))?;
-    let lua = Lua::new_with(StdLib::NONE, LuaOptions::default())?;
+    let bytes = fs::read(path).with_context(|| format!("Unable to read {}", path.display()))?;
+    let (source, mode, lua) = if bytes.starts_with(b"\x1bLua") {
+        let version = *bytes.get(4).context("Truncated Lua bytecode header")?;
+        ensure!(
+            version == 0x53,
+            "Unsupported Lua bytecode version 0x{version:02X}; expected Lua 5.3 (0x53)"
+        );
+        // Binary chunks must come from trusted files; mlua's safe state rejects bytecode.
+        let lua = unsafe { Lua::unsafe_new_with(StdLib::NONE, LuaOptions::default()) };
+        (bytes.as_slice(), ChunkMode::Binary, lua)
+    } else {
+        let source = std::str::from_utf8(&bytes).context("NetMsgId.lua text must be UTF-8")?;
+        (
+            source.trim_start_matches('\u{feff}').as_bytes(),
+            ChunkMode::Text,
+            Lua::new_with(StdLib::NONE, LuaOptions::default())?,
+        )
+    };
     lua.set_memory_limit(16 * 1024 * 1024)?;
     lua.set_hook(
         HookTriggers::new().every_nth_instruction(1_000_000),
@@ -249,12 +264,12 @@ fn load_commands(path: &Path) -> Result<(HashMap<i16, String>, HashMap<i16, Stri
         },
     )?;
     let table: Table = lua
-        .load(source.trim_start_matches('\u{feff}'))
-        .set_mode(ChunkMode::Text)
+        .load(source)
+        .set_mode(mode)
         .set_name(path.to_string_lossy())
         .set_environment(lua.create_table()?)
         .eval()
-        .context("NetMsgId.lua must return a table")?;
+        .with_context(|| format!("{} must return a NetMsgId table", path.display()))?;
     let ids: Table = table.get("Id").context("Missing NetMsgId.Id table")?;
     let types: Table = table
         .get("MsgName")

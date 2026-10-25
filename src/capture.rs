@@ -155,7 +155,6 @@ pub fn import(bytes: &[u8]) -> Result<Vec<Packet>> {
         if line.starts_with('}') && in_block {
             in_block = false;
             let packet: Packet = serde_json::from_str(&block).context("Invalid capture block")?;
-            rbase64::decode(&packet.raw).context("Invalid base64 packet data")?;
             packets.push(packet);
         }
     }
